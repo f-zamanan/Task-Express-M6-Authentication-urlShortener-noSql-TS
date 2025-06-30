@@ -6,10 +6,14 @@ import dotenv from "dotenv";
 
 dotenv.config();
 // generate the token
-const generateToken = (id: string) => {
-  const token = jwt.sign({ id }, process.env.JWT_SK as string, {
-    expiresIn: "1h", // best practice is to add the expiration time in .env file, it's a security risk
-  });
+const generateToken = (id: string, username: string) => {
+  const token = jwt.sign(
+    { userID: id, username },
+    process.env.JWT_SK as string,
+    {
+      expiresIn: "1h", // best practice is to add the expiration time in .env file, it's a security risk
+    }
+  );
 
   return token;
 };
@@ -20,7 +24,7 @@ export const signup = async (
   next: NextFunction
 ) => {
   try {
-    // 1. extract user info from re.body > done
+    // 1. extract user info from re.body
     const { username, password } = req.body;
 
     // 2. check if user alreadt exists or dupelicate?
@@ -34,8 +38,8 @@ export const signup = async (
     // 4. create the user
     const newUser = await User.create({ username, password: enrcyptedPass });
     // 5. generate token
-    const generatedToken = generateToken(`${newUser._id}`); // id needs to be a string
-    res.status(201).json(newUser);
+    const generatedToken = generateToken(`${newUser._id}`, newUser?.username!); // id needs to be a string, mongoDB id is of type objectId not string therfore work around
+    res.status(201).json(generatedToken); // return token
   } catch (err) {
     next(err);
   }
@@ -47,6 +51,27 @@ export const signin = async (
   next: NextFunction
 ) => {
   try {
+    // 1. extract user info from re.body
+    const { username, password } = req.body;
+
+    // 2. check if user exists
+    const foundUser = await User.findOne({ username });
+    if (!username) {
+      res.status(401).json("User Not Found");
+    }
+    // 3. compare plaintext pass to hashed pass
+    const isPassValid = await bcrypt.compare(password, foundUser?.password!);
+    // 4. if it matches generate token
+    if (isPassValid) {
+      const generatedToken = generateToken(
+        `${foundUser?._id}`,
+        foundUser?.username!
+      );
+      // 5. respond with token
+      res.json(generateToken);
+    } else {
+      res.status(401).json("Password incorrect");
+    }
   } catch (err) {
     next(err);
   }
